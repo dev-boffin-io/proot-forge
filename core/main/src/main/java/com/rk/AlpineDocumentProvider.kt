@@ -20,7 +20,7 @@ import java.io.IOException
 import java.util.Collections
 import java.util.LinkedList
 import java.util.Locale
-import com.rk.terminal.R
+import io.boffin.proot.R
 
 class AlpineDocumentProvider : DocumentsProvider() {
 
@@ -28,7 +28,7 @@ class AlpineDocumentProvider : DocumentsProvider() {
 
     override fun queryRoots(projection: Array<String>?): Cursor {
         val result = MatrixCursor(projection ?: DEFAULT_ROOT_PROJECTION)
-        val applicationName = "ReTerminal"
+        val applicationName = "Proot Forge"
 
         val row = result.newRow()
         row.add(DocumentsContract.Root.COLUMN_ROOT_ID, getDocIdForFile(baseDir))

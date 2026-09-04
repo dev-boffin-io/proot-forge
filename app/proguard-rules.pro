@@ -150,7 +150,7 @@
 # Retain generic signatures of TypeToken and its subclasses with R8 version 3.0 and higher.
 -keep,allowobfuscation,allowshrinking class com.google.gson.reflect.TypeToken
 -keep,allowobfuscation,allowshrinking class * extends com.google.gson.reflect.TypeToken
--keep class com.rk.terminal.App { *; }
+-keep class io.boffin.proot.App { *; }
 # Prevent proguard from stripping interface information from TypeAdapter, TypeAdapterFactory,
 # JsonSerializer, JsonDeserializer instances (so they can be used in @JsonAdapter)
 -keep class * extends com.google.gson.TypeAdapter
@@ -207,21 +207,21 @@
 -keepclasseswithmembernames class com.rk.plugin.server.api.API {*;}
 -keepclasseswithmembernames class com.rk.plugin.server.api.PluginLifeCycle  {*;}
 -keepclasseswithmembernames class com.rk.plugin.server.** {*;}
--keep class com.rk.terminal.MainActivity.MainActivity {*;}
--keepclasseswithmembernames class com.rk.terminal.App {*;}
--keepclasseswithmembernames class com.rk.terminal.BaseActivity {*;}
+-keep class io.boffin.proot.MainActivity.MainActivity {*;}
+-keepclasseswithmembernames class io.boffin.proot.App {*;}
+-keepclasseswithmembernames class io.boffin.proot.BaseActivity {*;}
 
 -keepclassmembernames class com.rk.plugin.server.api.API {*;}
 -keepclassmembernames class com.rk.plugin.server.api.PluginLifeCycle {*;}
 -keepclassmembernames class com.rk.plugin.server.** {*;}
--keepclassmembernames class com.rk.terminal.App {*;}
--keepclassmembernames class com.rk.terminal.BaseActivity {*;}
+-keepclassmembernames class io.boffin.proot.App {*;}
+-keepclassmembernames class io.boffin.proot.BaseActivity {*;}
 
 -keepnames class com.rk.plugin.server.api.API {*;}
 -keepnames class com.rk.plugin.server.api.PluginLifeCycle {*;}
 -keepnames class com.rk.plugin.server.** {*;}
--keepnames class com.rk.terminal.App {*;}
--keepnames class com.rk.terminal.BaseActivity {*;}
+-keepnames class io.boffin.proot.App {*;}
+-keepnames class io.boffin.proot.BaseActivity {*;}
 
 -dontwarn sun.security.x509.X509Key
 -dontobfuscate

@@ -6,8 +6,8 @@ import android.content.SharedPreferences
 import android.os.Build
 import androidx.appcompat.app.AppCompatDelegate
 import com.rk.libcommons.application
-import com.rk.terminal.ui.screens.settings.WorkingMode
-import com.rk.terminal.ui.screens.settings.InputMode
+import io.boffin.proot.ui.screens.settings.WorkingMode
+import io.boffin.proot.ui.screens.settings.InputMode
 
 object Settings {
     //Boolean
@@ -102,12 +102,12 @@ object Settings {
         get() = Preference.getBoolean(key = "shortcuts_enabled", default = true)
         set(value) = Preference.setBoolean(key = "shortcuts_enabled", value)
 
-    fun getShortcutBinding(action: com.rk.terminal.ui.screens.terminal.ShortcutAction): com.rk.terminal.ui.screens.terminal.ShortcutBinding {
+    fun getShortcutBinding(action: io.boffin.proot.ui.screens.terminal.ShortcutAction): io.boffin.proot.ui.screens.terminal.ShortcutBinding {
         val raw = Preference.getString(key = action.prefKey, default = action.default.serialize())
-        return com.rk.terminal.ui.screens.terminal.ShortcutBinding.deserialize(raw)
+        return io.boffin.proot.ui.screens.terminal.ShortcutBinding.deserialize(raw)
     }
 
-    fun setShortcutBinding(action: com.rk.terminal.ui.screens.terminal.ShortcutAction, binding: com.rk.terminal.ui.screens.terminal.ShortcutBinding) {
+    fun setShortcutBinding(action: io.boffin.proot.ui.screens.terminal.ShortcutAction, binding: io.boffin.proot.ui.screens.terminal.ShortcutBinding) {
         Preference.setString(key = action.prefKey, value = binding.serialize())
     }
 
