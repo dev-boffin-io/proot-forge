@@ -2,6 +2,7 @@ package io.boffin.proot.ui.activities.terminal
 
 import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -34,6 +35,21 @@ class MainActivity : ComponentActivity() {
             if (!isGranted) {
                 // Optional: Handle permission denied
             }
+        }
+
+    // Registered as a plain Activity field (same pattern as requestNotificationPermission above)
+    // rather than via rememberLauncherForActivityResult inside TerminalScreen. On some OEM ROMs
+    // (observed on MIUI) the app process gets killed in the background while the system file
+    // picker is in the foreground; when the process is recreated, a launcher registered deep in
+    // a Composable can lose its callback registration, and Android fails to redeliver the
+    // ACTION_OPEN_DOCUMENT result (crashes internally in ActivityThread.deliverResultsIfNeeded,
+    // silently - the picker just closes with nothing happening). Registering the launcher here,
+    // in the Activity's field initializers, is the pattern the Activity Result docs call out as
+    // safe across process death.
+    var boffinPickCallback: ((Uri?) -> Unit)? = null
+    val boffinFilePicker =
+        registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            boffinPickCallback?.invoke(uri)
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {

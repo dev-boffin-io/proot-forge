@@ -5,8 +5,6 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -79,31 +77,39 @@ fun TerminalScreen(
         showAddDialog = false
     }
 
-    val boffinFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+    val boffinPickHandler: (Uri?) -> Unit = { uri ->
         if (uri == null) {
             // User backed out of the picker - nothing selected, nothing to do.
-            return@rememberLauncherForActivityResult
-        }
-        downloadingMode = WorkingMode.BOFFIN
-        downloadError = null
-        downloadProgress = 0
-        scope.launch {
-            withContext(Dispatchers.IO) {
-                try {
-                    copyPickedRootfs(context, uri, "boffin.tar.gz") { pct ->
-                        downloadProgress = pct
-                    }
-                    withContext(Dispatchers.Main) {
-                        downloadingMode = null
-                        proceedToCreateSession(WorkingMode.BOFFIN)
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        downloadError = e.message ?: e.javaClass.simpleName
+        } else {
+            downloadingMode = WorkingMode.BOFFIN
+            downloadError = null
+            downloadProgress = 0
+            scope.launch {
+                withContext(Dispatchers.IO) {
+                    try {
+                        copyPickedRootfs(context, uri, "boffin.tar.gz") { pct ->
+                            downloadProgress = pct
+                        }
+                        withContext(Dispatchers.Main) {
+                            downloadingMode = null
+                            proceedToCreateSession(WorkingMode.BOFFIN)
+                        }
+                    } catch (e: Exception) {
+                        withContext(Dispatchers.Main) {
+                            downloadError = e.message ?: e.javaClass.simpleName
+                        }
                     }
                 }
             }
         }
+    }
+
+    // The launcher itself lives on MainActivity (registered in its field initializers) so it
+    // survives the app process being killed while the picker is in the foreground; only the
+    // callback that actually handles the result is wired up/torn down here.
+    DisposableEffect(Unit) {
+        mainActivity.boffinPickCallback = boffinPickHandler
+        onDispose { mainActivity.boffinPickCallback = null }
     }
 
     LaunchedEffect(Unit) {
@@ -141,7 +147,7 @@ fun TerminalScreen(
                             proceedToCreateSession(mode)
                         } else {
                             showAddDialog = false
-                            boffinFilePicker.launch(arrayOf("*/*"))
+                            mainActivity.boffinFilePicker.launch(arrayOf("*/*"))
                         }
                     }
                     WorkingMode.CUSTOM -> {
