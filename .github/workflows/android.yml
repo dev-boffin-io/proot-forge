@@ -57,9 +57,17 @@ jobs:
 
       - name: Send APK to Telegram
         if: ${{ success() && github.event.head_commit.message != '' }}
+        env:
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          COMMIT_AUTHOR: ${{ github.actor }}
         run: |
+          CAPTION="${COMMIT_MESSAGE} by ${COMMIT_AUTHOR}"
+          # Telegram's caption limit is 1024 chars; trim instead of letting the API call fail.
+          if [ "${#CAPTION}" -gt 1024 ]; then
+            CAPTION="${CAPTION:0:1021}..."
+          fi
           curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_BOT }}/sendDocument" \
           -F chat_id="-1002292589492" \
           -F message_thread_id="116" \
-          -F caption="${{ github.event.head_commit.message }} by ${{ github.actor }}" \
+          -F caption="${CAPTION}" \
           -F document=@"app/proot-forge-${{ env.COMMIT_HASH }}.apk"
