@@ -30,6 +30,8 @@ fun Context.alpineHomeDir(): File {
     }
 }
 
+// "Custom" session dir (formerly the dedicated NetHunter feature). Function/dir names kept
+// as "nethunter" so existing installs' already-downloaded rootfs keeps working unchanged.
 fun Context.nethunterDir(): File {
     return localDir().child("nethunter").also {
         if (!it.exists()) {
@@ -40,6 +42,22 @@ fun Context.nethunterDir(): File {
 
 fun Context.nethunterHomeDir(): File {
     return nethunterDir().child("root").also {
+        if (!it.exists()) {
+            it.mkdirs()
+        }
+    }
+}
+
+fun Context.boffinDir(): File {
+    return localDir().child("boffin").also {
+        if (!it.exists()) {
+            it.mkdirs()
+        }
+    }
+}
+
+fun Context.boffinHomeDir(): File {
+    return boffinDir().child("root").also {
         if (!it.exists()) {
             it.mkdirs()
         }

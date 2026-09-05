@@ -60,7 +60,11 @@ fun SettingsCard(
 object WorkingMode {
     const val ALPINE = 0
     const val ANDROID = 1
-    const val NETHUNTER = 2
+    // Was NETHUNTER; kept the same int value (2) since nothing else changed about how this
+    // mode works under the hood, only its UI label and the fact its manifest URL is now
+    // user-swappable to point at any rootfs, not just NetHunter's.
+    const val CUSTOM = 2
+    const val BOFFIN = 3
 }
 
 object InputMode {

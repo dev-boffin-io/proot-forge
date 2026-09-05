@@ -7,6 +7,7 @@ import com.rk.libcommons.createFileIfNot
 import com.rk.libcommons.localBinDir
 import com.rk.libcommons.localDir
 import com.rk.libcommons.localLibDir
+import com.rk.libcommons.boffinHomeDir
 import com.rk.libcommons.nethunterHomeDir
 import io.boffin.proot.App.Companion.getTempDir
 import io.boffin.proot.BuildConfig
@@ -37,10 +38,10 @@ object MkSession {
                 "EXTERNAL_STORAGE" to System.getenv("EXTERNAL_STORAGE")
             )
 
-            val workingDir = pendingCommand?.workingDir ?: if (workingMode == WorkingMode.NETHUNTER) {
-                nethunterHomeDir().path
-            } else {
-                alpineHomeDir().path
+            val workingDir = pendingCommand?.workingDir ?: when (workingMode) {
+                WorkingMode.CUSTOM -> nethunterHomeDir().path
+                WorkingMode.BOFFIN -> boffinHomeDir().path
+                else -> alpineHomeDir().path
             }
 
             val initFile: File = localBinDir().child("init-host")
@@ -80,8 +81,16 @@ object MkSession {
                 "TMPDIR=${getTempDir(this).absolutePath}",
                 "PROOT_LOADER=${applicationInfo.nativeLibraryDir}/libloader.so",
                 "PROOT=${applicationInfo.nativeLibraryDir}/libproot.so",
-                "DISTRO_DIR=${if (workingMode == WorkingMode.NETHUNTER) "nethunter" else "alpine"}",
-                "DISTRO_ARCHIVE=${if (workingMode == WorkingMode.NETHUNTER) "nethunter.tar.xz" else "alpine.tar.gz"}",
+                "DISTRO_DIR=${when (workingMode) {
+                    WorkingMode.CUSTOM -> "nethunter"
+                    WorkingMode.BOFFIN -> "boffin"
+                    else -> "alpine"
+                }}",
+                "DISTRO_ARCHIVE=${when (workingMode) {
+                    WorkingMode.CUSTOM -> "nethunter.tar.xz"
+                    WorkingMode.BOFFIN -> "boffin.tar.gz"
+                    else -> "alpine.tar.gz"
+                }}",
             )
 
             val loader32 = "${applicationInfo.nativeLibraryDir}/libloader32.so"
@@ -109,7 +118,7 @@ object MkSession {
 
             val args: Array<String>
             val shell = if (pendingCommand == null) {
-                args = if (workingMode == WorkingMode.ALPINE || workingMode == WorkingMode.NETHUNTER) {
+                args = if (workingMode == WorkingMode.ALPINE || workingMode == WorkingMode.CUSTOM || workingMode == WorkingMode.BOFFIN) {
                     arrayOf("-c", initFile.absolutePath)
                 } else {
                     arrayOf()

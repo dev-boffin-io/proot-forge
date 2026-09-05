@@ -36,7 +36,8 @@ import com.rk.resources.strings
 import io.boffin.proot.ui.activities.terminal.MainActivity
 import io.boffin.proot.ui.activities.terminal.MainViewModel
 import io.boffin.proot.ui.components.SetStatusBarTextColor
-import io.boffin.proot.ui.screens.downloader.NethunterInstaller
+import io.boffin.proot.ui.screens.downloader.BoffinInstaller
+import io.boffin.proot.ui.screens.downloader.CustomInstaller
 import io.boffin.proot.ui.screens.settings.SettingsCard
 import io.boffin.proot.ui.screens.settings.WorkingMode
 import io.boffin.proot.ui.screens.terminal.virtualkeys.VirtualKeysListener
@@ -59,9 +60,9 @@ fun TerminalScreen(
     val configuration = LocalConfiguration.current
     val drawerWidth = (configuration.screenWidthDp * 0.84).dp
     var showAddDialog by remember { mutableStateOf(false) }
-    var isNethunterDownloading by remember { mutableStateOf(false) }
-    var nethunterProgress by remember { mutableIntStateOf(0) }
-    var nethunterError by remember { mutableStateOf<String?>(null) }
+    var downloadingMode by remember { mutableStateOf<Int?>(null) }
+    var downloadProgress by remember { mutableIntStateOf(0) }
+    var downloadError by remember { mutableStateOf<String?>(null) }
 
     val sessionBinder = mainViewModel.sessionBinder
 
@@ -103,24 +104,31 @@ fun TerminalScreen(
                     showAddDialog = false
                 }
 
-                if (mode == WorkingMode.NETHUNTER && !Rootfs.isNethunterRootfsInstalled(context)) {
+                val needsDownload = when (mode) {
+                    WorkingMode.CUSTOM -> !Rootfs.isCustomRootfsInstalled(context)
+                    WorkingMode.BOFFIN -> !Rootfs.isBoffinRootfsInstalled(context)
+                    else -> false
+                }
+
+                if (needsDownload) {
                     showAddDialog = false
-                    isNethunterDownloading = true
-                    nethunterError = null
-                    nethunterProgress = 0
+                    downloadingMode = mode
+                    downloadError = null
+                    downloadProgress = 0
                     scope.launch {
                         withContext(Dispatchers.IO) {
                             try {
-                                NethunterInstaller.downloadIfNeeded(context) { pct ->
-                                    nethunterProgress = pct
+                                val installer = if (mode == WorkingMode.CUSTOM) CustomInstaller else BoffinInstaller
+                                installer.downloadIfNeeded(context) { pct ->
+                                    downloadProgress = pct
                                 }
                                 withContext(Dispatchers.Main) {
-                                    isNethunterDownloading = false
+                                    downloadingMode = null
                                     proceedToCreateSession()
                                 }
                             } catch (e: Exception) {
                                 withContext(Dispatchers.Main) {
-                                    nethunterError = e.message ?: e.javaClass.simpleName
+                                    downloadError = e.message ?: e.javaClass.simpleName
                                 }
                             }
                         }
@@ -132,13 +140,15 @@ fun TerminalScreen(
         )
     }
 
-    if (isNethunterDownloading) {
-        NethunterDownloadDialog(
-            progress = nethunterProgress,
-            error = nethunterError,
+    if (downloadingMode != null) {
+        val label = if (downloadingMode == WorkingMode.CUSTOM) "Custom" else "Boffin"
+        RootfsDownloadDialog(
+            label = label,
+            progress = downloadProgress,
+            error = downloadError,
             onDismiss = {
-                isNethunterDownloading = false
-                nethunterError = null
+                downloadingMode = null
+                downloadError = null
             }
         )
     }
@@ -234,18 +244,23 @@ private fun AddSessionDialog(onDismiss: () -> Unit, onCreateSession: (Int) -> Un
             )
             if (isArm64) {
                 SettingsCard(
-                    title = { Text("NetHunter") },
+                    title = { Text("Custom") },
                     description = { Text("Kali NetHunter (full, arm64 only)") },
-                    onClick = { onCreateSession(WorkingMode.NETHUNTER) }
+                    onClick = { onCreateSession(WorkingMode.CUSTOM) }
                 )
             }
+            SettingsCard(
+                title = { Text("Boffin") },
+                description = { Text("Debian 12 XFCE4 desktop (self-hosted)") },
+                onClick = { onCreateSession(WorkingMode.BOFFIN) }
+            )
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun NethunterDownloadDialog(progress: Int, error: String?, onDismiss: () -> Unit) {
+private fun RootfsDownloadDialog(label: String, progress: Int, error: String?, onDismiss: () -> Unit) {
     BasicAlertDialog(onDismissRequest = { if (error != null) onDismiss() }) {
         Surface(shape = MaterialTheme.shapes.large) {
             Column(
@@ -253,11 +268,11 @@ private fun NethunterDownloadDialog(progress: Int, error: String?, onDismiss: ()
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (error != null) {
-                    Text("NetHunter download failed: $error", color = MaterialTheme.colorScheme.error)
+                    Text("$label download failed: $error", color = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.height(12.dp))
                     TextButton(onClick = onDismiss) { Text("Close") }
                 } else {
-                    Text("Downloading NetHunter rootfs\u2026")
+                    Text("Downloading $label rootfs\u2026")
                     Spacer(modifier = Modifier.height(16.dp))
                     if (progress > 0) {
                         CircularProgressIndicator(progress = { progress / 100f })
