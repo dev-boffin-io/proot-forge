@@ -3,7 +3,6 @@ package io.boffin.proot.ui.screens.terminal
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
 import android.os.Build
-import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -11,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -34,12 +34,12 @@ import androidx.navigation.NavController
 import com.rk.components.compose.preferences.base.PreferenceGroup
 import com.rk.libcommons.child
 import com.rk.resources.strings
+import com.rk.settings.Settings
 import io.boffin.proot.ui.activities.terminal.MainActivity
 import io.boffin.proot.ui.activities.terminal.MainViewModel
 import io.boffin.proot.ui.components.SetStatusBarTextColor
 import io.boffin.proot.ui.screens.downloader.CustomInstaller
-import io.boffin.proot.ui.screens.downloader.boffinSourceFile
-import io.boffin.proot.ui.screens.downloader.copyExternalRootfs
+import io.boffin.proot.ui.screens.downloader.downloadDirectRootfs
 import io.boffin.proot.ui.screens.settings.SettingsCard
 import io.boffin.proot.ui.screens.settings.WorkingMode
 import io.boffin.proot.ui.screens.terminal.virtualkeys.VirtualKeysListener
@@ -78,7 +78,7 @@ fun TerminalScreen(
         showAddDialog = false
     }
 
-    var infoMessage by remember { mutableStateOf<String?>(null) }
+    var showBoffinUrlDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -114,40 +114,8 @@ fun TerminalScreen(
                         if (Rootfs.isBoffinRootfsInstalled(context)) {
                             proceedToCreateSession(mode)
                         } else {
-                            val sourceFile = boffinSourceFile()
-                            val guidance = when {
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager() ->
-                                    "Boffin needs \"All files access\" to read the rootfs archive. Grant it from Settings \u2192 Apps \u2192 Proot Forge \u2192 Permissions \u2192 All files access (or the \"All file access\" toggle in this app's own Settings), then try again."
-                                !sourceFile.exists() ->
-                                    "Put your Boffin rootfs archive at:\n${sourceFile.path}\nthen tap Boffin again."
-                                else -> null
-                            }
-                            if (guidance != null) {
-                                showAddDialog = false
-                                infoMessage = guidance
-                            } else {
-                                showAddDialog = false
-                                downloadingMode = mode
-                                downloadError = null
-                                downloadProgress = 0
-                                scope.launch {
-                                    withContext(Dispatchers.IO) {
-                                        try {
-                                            copyExternalRootfs(context, sourceFile, "boffin.tar.gz") { pct ->
-                                                downloadProgress = pct
-                                            }
-                                            withContext(Dispatchers.Main) {
-                                                downloadingMode = null
-                                                proceedToCreateSession(mode)
-                                            }
-                                        } catch (e: Exception) {
-                                            withContext(Dispatchers.Main) {
-                                                downloadError = e.message ?: e.javaClass.simpleName
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            showAddDialog = false
+                            showBoffinUrlDialog = true
                         }
                     }
                     WorkingMode.CUSTOM -> {
@@ -185,10 +153,9 @@ fun TerminalScreen(
 
     if (downloadingMode != null) {
         val label = if (downloadingMode == WorkingMode.CUSTOM) "Custom" else "Boffin"
-        val verb = if (downloadingMode == WorkingMode.CUSTOM) "Downloading" else "Copying"
         RootfsDownloadDialog(
             label = label,
-            verb = verb,
+            verb = "Downloading",
             progress = downloadProgress,
             error = downloadError,
             onDismiss = {
@@ -198,8 +165,41 @@ fun TerminalScreen(
         )
     }
 
-    if (infoMessage != null) {
-        InfoDialog(message = infoMessage!!, onDismiss = { infoMessage = null })
+    if (showBoffinUrlDialog) {
+        BoffinUrlDialog(
+            initialUrl = Settings.boffin_url,
+            onDismiss = { showBoffinUrlDialog = false },
+            onConfirm = { url ->
+                showBoffinUrlDialog = false
+                Settings.boffin_url = url
+                downloadingMode = WorkingMode.BOFFIN
+                downloadError = null
+                downloadProgress = 0
+                scope.launch {
+                    withContext(Dispatchers.IO) {
+                        try {
+                            downloadDirectRootfs(
+                                context = context,
+                                url = url,
+                                outputFileName = "boffin.tar.gz",
+                                connectTimeoutMs = 120_000,
+                                readTimeoutMs = 120_000
+                            ) { pct ->
+                                downloadProgress = pct
+                            }
+                            withContext(Dispatchers.Main) {
+                                downloadingMode = null
+                                proceedToCreateSession(WorkingMode.BOFFIN)
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                downloadError = e.message ?: e.javaClass.simpleName
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 
     ModalNavigationDrawer(
@@ -300,7 +300,7 @@ private fun AddSessionDialog(onDismiss: () -> Unit, onCreateSession: (Int) -> Un
             }
             SettingsCard(
                 title = { Text("Boffin") },
-                description = { Text("Debian 12 XFCE4 desktop (from Downloads folder)") },
+                description = { Text("Debian 12 XFCE4 desktop (enter rootfs URL)") },
                 onClick = { onCreateSession(WorkingMode.BOFFIN) }
             )
         }
@@ -339,16 +339,34 @@ private fun RootfsDownloadDialog(label: String, verb: String, progress: Int, err
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InfoDialog(message: String, onDismiss: () -> Unit) {
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Surface(shape = MaterialTheme.shapes.large) {
-            Column(modifier = Modifier.padding(24.dp)) {
-                Text(message)
-                Spacer(modifier = Modifier.height(16.dp))
-                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("OK") }
+private fun BoffinUrlDialog(initialUrl: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var url by remember { mutableStateOf(initialUrl) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Boffin rootfs URL") },
+        text = {
+            Column {
+                Text("Enter a direct download link for the Boffin rootfs archive (.tar.gz).")
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = url,
+                    onValueChange = { url = it },
+                    singleLine = true,
+                    placeholder = { Text("https://example.com/debian12-full-xfce4-rootfs.tar.gz") },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (url.isNotBlank()) onConfirm(url.trim()) },
+                enabled = url.isNotBlank()
+            ) { Text("Download") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
-    }
+    )
 }
 
 private fun generateUniqueSessionId(existingIds: List<String>): String {

@@ -57,6 +57,9 @@ object Settings {
     var custom_font_name
         get() = Preference.getString(key = "custom_ttf_name", default = "No Font Selected")
         set(value) = Preference.setString(key = "custom_ttf_name",value)
+    var boffin_url
+        get() = Preference.getString(key = "boffin_url", default = "")
+        set(value) = Preference.setString(key = "boffin_url",value)
 
     var background_blur
         get() = Preference.getFloat(key = "background_blur", default = 0f)
