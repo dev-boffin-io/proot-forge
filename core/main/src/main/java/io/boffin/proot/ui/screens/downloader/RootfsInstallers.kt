@@ -1,11 +1,11 @@
 package io.boffin.proot.ui.screens.downloader
 
 import android.content.Context
-import android.net.Uri
-import android.provider.OpenableColumns
+import android.os.Environment
 import com.rk.libcommons.child
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -79,13 +79,26 @@ private fun downloadManifestRootfs(
 }
 
 /**
- * Copies a file the user picked via the system file/document picker (SAF) into
- * context.filesDir/<outputFileName>. Used by the "Boffin" session, which is installed from a
- * rootfs archive already sitting on the phone's storage rather than downloaded over the network.
+ * Fixed, well-known location the user drops the Boffin rootfs archive at (e.g. via Termux's
+ * `cp`/`mv`/`wget`, adb push, or any file manager with storage access) - see
+ * [copyExternalRootfs]. Chosen over a system file picker (SAF/ACTION_OPEN_DOCUMENT) because on
+ * at least one real device the OPEN_DOCUMENT round-trip through DocumentsUI's PickActivity
+ * reliably crashes inside the OS's own ActivityThread when delivering the result (a MIUI-side
+ * bug, reproduced even via the classic startActivityForResult/onActivityResult path - not
+ * something app code can route around). A fixed path needs no picker UI at all.
  */
-fun copyPickedRootfs(
+fun boffinSourceFile(): File =
+    File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), "boffin-rootfs.tar.gz")
+
+/**
+ * Copies a plain file already sitting on shared storage (see [boffinSourceFile]) into
+ * context.filesDir/<outputFileName>. Requires "All files access" (MANAGE_EXTERNAL_STORAGE) on
+ * Android 11+ to read arbitrary paths under shared storage; the app already declares/requests
+ * that permission elsewhere (Settings screen).
+ */
+fun copyExternalRootfs(
     context: Context,
-    uri: Uri,
+    sourceFile: File,
     outputFileName: String,
     onProgress: (Int) -> Unit
 ) {
@@ -93,26 +106,19 @@ fun copyPickedRootfs(
     if (outputFile.exists() && outputFile.length() > 0L) {
         return
     }
-
-    val resolver = context.contentResolver
-    var totalSize = -1L
-    resolver.query(uri, null, null, null, null)?.use { cursor ->
-        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-        if (sizeIndex >= 0 && cursor.moveToFirst()) {
-            totalSize = cursor.getLong(sizeIndex)
-        }
+    if (!sourceFile.exists()) {
+        throw IOException("${sourceFile.path} does not exist")
     }
 
+    val totalSize = sourceFile.length()
     val tempFile = File(outputFile.path + ".part")
-    val input = resolver.openInputStream(uri)
-        ?: throw IOException("Failed to open the selected file")
 
-    input.use { stream ->
+    FileInputStream(sourceFile).use { input ->
         FileOutputStream(tempFile).use { output ->
             val buffer = ByteArray(64 * 1024)
             var bytesRead: Int
             var totalRead = 0L
-            while (stream.read(buffer).also { bytesRead = it } != -1) {
+            while (input.read(buffer).also { bytesRead = it } != -1) {
                 output.write(buffer, 0, bytesRead)
                 totalRead += bytesRead
                 if (totalSize > 0) {

@@ -1,10 +1,7 @@
 package io.boffin.proot.ui.activities.terminal
 
-import android.app.Activity
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Rect
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -27,10 +24,6 @@ import io.boffin.proot.ui.screens.terminal.TerminalViewModel
 import io.boffin.proot.ui.theme.KarbonTheme
 
 class MainActivity : ComponentActivity() {
-    companion object {
-        private const val BOFFIN_PICK_REQUEST_CODE = 4242
-    }
-
     val viewModel: MainViewModel by viewModels()
     private val terminalViewModel: TerminalViewModel by viewModels()
     private var isKeyboardVisible = false
@@ -42,35 +35,6 @@ class MainActivity : ComponentActivity() {
                 // Optional: Handle permission denied
             }
         }
-
-    // Deliberately NOT using androidx's registerForActivityResult/ActivityResultContracts here.
-    // Logcat from a real failure showed the crash happening inside the OS's own
-    // ActivityThread.deliverResultsIfNeeded (a NullPointerException reading a null Bundle),
-    // immediately after MIUI's own MiuiFreeFormGestureController.deliverResultForFinishActivity
-    // hook ran - i.e. this isn't our process getting killed (it never was, in that log) and
-    // isn't our code throwing; it's an OEM framework hook that appears to choke on results
-    // routed through AndroidX's Fragment-based ActivityResultRegistry. Falling back to the
-    // classic startActivityForResult()/onActivityResult() path (in use since API 1, no
-    // Fragment indirection) sidesteps that specific delivery mechanism.
-    var boffinPickCallback: ((Uri?) -> Unit)? = null
-
-    fun launchBoffinFilePicker() {
-        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-        }
-        @Suppress("DEPRECATION")
-        startActivityForResult(intent, BOFFIN_PICK_REQUEST_CODE)
-    }
-
-    @Suppress("DEPRECATION")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == BOFFIN_PICK_REQUEST_CODE) {
-            val uri = if (resultCode == Activity.RESULT_OK) data?.data else null
-            boffinPickCallback?.invoke(uri)
-        }
-    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

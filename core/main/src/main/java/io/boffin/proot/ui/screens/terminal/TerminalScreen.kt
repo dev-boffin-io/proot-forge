@@ -2,8 +2,8 @@ package io.boffin.proot.ui.screens.terminal
 
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
-import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -38,7 +38,8 @@ import io.boffin.proot.ui.activities.terminal.MainActivity
 import io.boffin.proot.ui.activities.terminal.MainViewModel
 import io.boffin.proot.ui.components.SetStatusBarTextColor
 import io.boffin.proot.ui.screens.downloader.CustomInstaller
-import io.boffin.proot.ui.screens.downloader.copyPickedRootfs
+import io.boffin.proot.ui.screens.downloader.boffinSourceFile
+import io.boffin.proot.ui.screens.downloader.copyExternalRootfs
 import io.boffin.proot.ui.screens.settings.SettingsCard
 import io.boffin.proot.ui.screens.settings.WorkingMode
 import io.boffin.proot.ui.screens.terminal.virtualkeys.VirtualKeysListener
@@ -77,40 +78,7 @@ fun TerminalScreen(
         showAddDialog = false
     }
 
-    val boffinPickHandler: (Uri?) -> Unit = { uri ->
-        if (uri == null) {
-            // User backed out of the picker - nothing selected, nothing to do.
-        } else {
-            downloadingMode = WorkingMode.BOFFIN
-            downloadError = null
-            downloadProgress = 0
-            scope.launch {
-                withContext(Dispatchers.IO) {
-                    try {
-                        copyPickedRootfs(context, uri, "boffin.tar.gz") { pct ->
-                            downloadProgress = pct
-                        }
-                        withContext(Dispatchers.Main) {
-                            downloadingMode = null
-                            proceedToCreateSession(WorkingMode.BOFFIN)
-                        }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            downloadError = e.message ?: e.javaClass.simpleName
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // The picker itself is launched/received on MainActivity via the classic
-    // startActivityForResult/onActivityResult path (see MainActivity.kt for why); only the
-    // callback that actually handles the result is wired up/torn down here.
-    DisposableEffect(Unit) {
-        mainActivity.boffinPickCallback = boffinPickHandler
-        onDispose { mainActivity.boffinPickCallback = null }
-    }
+    var infoMessage by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -146,8 +114,40 @@ fun TerminalScreen(
                         if (Rootfs.isBoffinRootfsInstalled(context)) {
                             proceedToCreateSession(mode)
                         } else {
-                            showAddDialog = false
-                            mainActivity.launchBoffinFilePicker()
+                            val sourceFile = boffinSourceFile()
+                            val guidance = when {
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && !Environment.isExternalStorageManager() ->
+                                    "Boffin needs \"All files access\" to read the rootfs archive. Grant it from Settings \u2192 Apps \u2192 Proot Forge \u2192 Permissions \u2192 All files access (or the \"All file access\" toggle in this app's own Settings), then try again."
+                                !sourceFile.exists() ->
+                                    "Put your Boffin rootfs archive at:\n${sourceFile.path}\nthen tap Boffin again."
+                                else -> null
+                            }
+                            if (guidance != null) {
+                                showAddDialog = false
+                                infoMessage = guidance
+                            } else {
+                                showAddDialog = false
+                                downloadingMode = mode
+                                downloadError = null
+                                downloadProgress = 0
+                                scope.launch {
+                                    withContext(Dispatchers.IO) {
+                                        try {
+                                            copyExternalRootfs(context, sourceFile, "boffin.tar.gz") { pct ->
+                                                downloadProgress = pct
+                                            }
+                                            withContext(Dispatchers.Main) {
+                                                downloadingMode = null
+                                                proceedToCreateSession(mode)
+                                            }
+                                        } catch (e: Exception) {
+                                            withContext(Dispatchers.Main) {
+                                                downloadError = e.message ?: e.javaClass.simpleName
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     WorkingMode.CUSTOM -> {
@@ -196,6 +196,10 @@ fun TerminalScreen(
                 downloadError = null
             }
         )
+    }
+
+    if (infoMessage != null) {
+        InfoDialog(message = infoMessage!!, onDismiss = { infoMessage = null })
     }
 
     ModalNavigationDrawer(
@@ -296,7 +300,7 @@ private fun AddSessionDialog(onDismiss: () -> Unit, onCreateSession: (Int) -> Un
             }
             SettingsCard(
                 title = { Text("Boffin") },
-                description = { Text("Debian 12 XFCE4 desktop (select rootfs file)") },
+                description = { Text("Debian 12 XFCE4 desktop (from Downloads folder)") },
                 onClick = { onCreateSession(WorkingMode.BOFFIN) }
             )
         }
@@ -328,6 +332,20 @@ private fun RootfsDownloadDialog(label: String, verb: String, progress: Int, err
                         CircularProgressIndicator()
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InfoDialog(message: String, onDismiss: () -> Unit) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(shape = MaterialTheme.shapes.large) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(message)
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) { Text("OK") }
             }
         }
     }
