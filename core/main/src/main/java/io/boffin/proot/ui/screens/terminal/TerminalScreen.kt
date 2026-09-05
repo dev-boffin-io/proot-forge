@@ -2,8 +2,11 @@ package io.boffin.proot.ui.screens.terminal
 
 import android.content.res.Configuration
 import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
@@ -36,9 +39,8 @@ import com.rk.resources.strings
 import io.boffin.proot.ui.activities.terminal.MainActivity
 import io.boffin.proot.ui.activities.terminal.MainViewModel
 import io.boffin.proot.ui.components.SetStatusBarTextColor
-import io.boffin.proot.ui.screens.downloader.BoffinInstaller
 import io.boffin.proot.ui.screens.downloader.CustomInstaller
-import io.boffin.proot.ui.screens.downloader.RootfsInstaller
+import io.boffin.proot.ui.screens.downloader.copyPickedRootfs
 import io.boffin.proot.ui.screens.settings.SettingsCard
 import io.boffin.proot.ui.screens.settings.WorkingMode
 import io.boffin.proot.ui.screens.terminal.virtualkeys.VirtualKeysListener
@@ -66,6 +68,43 @@ fun TerminalScreen(
     var downloadError by remember { mutableStateOf<String?>(null) }
 
     val sessionBinder = mainViewModel.sessionBinder
+
+    fun proceedToCreateSession(mode: Int) {
+        val binder = sessionBinder ?: return
+        val sessionId = generateUniqueSessionId(binder.getService().sessionList.keys.toList())
+        val terminal = terminalViewModel.terminalView ?: return
+        val client = TerminalBackEnd(terminal, mainActivity)
+        binder.createSession(sessionId, client, mode)
+        terminalViewModel.changeSession(context, binder, sessionId)
+        showAddDialog = false
+    }
+
+    val boffinFilePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri == null) {
+            // User backed out of the picker - nothing selected, nothing to do.
+            return@rememberLauncherForActivityResult
+        }
+        downloadingMode = WorkingMode.BOFFIN
+        downloadError = null
+        downloadProgress = 0
+        scope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    copyPickedRootfs(context, uri, "boffin.tar.gz") { pct ->
+                        downloadProgress = pct
+                    }
+                    withContext(Dispatchers.Main) {
+                        downloadingMode = null
+                        proceedToCreateSession(WorkingMode.BOFFIN)
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        downloadError = e.message ?: e.javaClass.simpleName
+                    }
+                }
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -96,46 +135,43 @@ fun TerminalScreen(
         AddSessionDialog(
             onDismiss = { showAddDialog = false },
             onCreateSession = { mode ->
-                fun proceedToCreateSession() {
-                    val sessionId = generateUniqueSessionId(sessionBinder.getService().sessionList.keys.toList())
-                    val terminal = terminalViewModel.terminalView ?: return
-                    val client = TerminalBackEnd(terminal, mainActivity)
-                    sessionBinder.createSession(sessionId, client, mode)
-                    terminalViewModel.changeSession(context, sessionBinder, sessionId)
-                    showAddDialog = false
-                }
-
-                val needsDownload = when (mode) {
-                    WorkingMode.CUSTOM -> !Rootfs.isCustomRootfsInstalled(context)
-                    WorkingMode.BOFFIN -> !Rootfs.isBoffinRootfsInstalled(context)
-                    else -> false
-                }
-
-                if (needsDownload) {
-                    showAddDialog = false
-                    downloadingMode = mode
-                    downloadError = null
-                    downloadProgress = 0
-                    scope.launch {
-                        withContext(Dispatchers.IO) {
-                            try {
-                                val installer: RootfsInstaller = if (mode == WorkingMode.CUSTOM) CustomInstaller else BoffinInstaller
-                                installer.downloadIfNeeded(context) { pct ->
-                                    downloadProgress = pct
-                                }
-                                withContext(Dispatchers.Main) {
-                                    downloadingMode = null
-                                    proceedToCreateSession()
-                                }
-                            } catch (e: Exception) {
-                                withContext(Dispatchers.Main) {
-                                    downloadError = e.message ?: e.javaClass.simpleName
+                when (mode) {
+                    WorkingMode.BOFFIN -> {
+                        if (Rootfs.isBoffinRootfsInstalled(context)) {
+                            proceedToCreateSession(mode)
+                        } else {
+                            showAddDialog = false
+                            boffinFilePicker.launch(arrayOf("*/*"))
+                        }
+                    }
+                    WorkingMode.CUSTOM -> {
+                        if (Rootfs.isCustomRootfsInstalled(context)) {
+                            proceedToCreateSession(mode)
+                        } else {
+                            showAddDialog = false
+                            downloadingMode = mode
+                            downloadError = null
+                            downloadProgress = 0
+                            scope.launch {
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        CustomInstaller.downloadIfNeeded(context) { pct ->
+                                            downloadProgress = pct
+                                        }
+                                        withContext(Dispatchers.Main) {
+                                            downloadingMode = null
+                                            proceedToCreateSession(mode)
+                                        }
+                                    } catch (e: Exception) {
+                                        withContext(Dispatchers.Main) {
+                                            downloadError = e.message ?: e.javaClass.simpleName
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
-                } else {
-                    proceedToCreateSession()
+                    else -> proceedToCreateSession(mode)
                 }
             }
         )
@@ -143,8 +179,10 @@ fun TerminalScreen(
 
     if (downloadingMode != null) {
         val label = if (downloadingMode == WorkingMode.CUSTOM) "Custom" else "Boffin"
+        val verb = if (downloadingMode == WorkingMode.CUSTOM) "Downloading" else "Copying"
         RootfsDownloadDialog(
             label = label,
+            verb = verb,
             progress = downloadProgress,
             error = downloadError,
             onDismiss = {
@@ -252,7 +290,7 @@ private fun AddSessionDialog(onDismiss: () -> Unit, onCreateSession: (Int) -> Un
             }
             SettingsCard(
                 title = { Text("Boffin") },
-                description = { Text("Debian 12 XFCE4 desktop (self-hosted)") },
+                description = { Text("Debian 12 XFCE4 desktop (select rootfs file)") },
                 onClick = { onCreateSession(WorkingMode.BOFFIN) }
             )
         }
@@ -261,7 +299,7 @@ private fun AddSessionDialog(onDismiss: () -> Unit, onCreateSession: (Int) -> Un
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RootfsDownloadDialog(label: String, progress: Int, error: String?, onDismiss: () -> Unit) {
+private fun RootfsDownloadDialog(label: String, verb: String, progress: Int, error: String?, onDismiss: () -> Unit) {
     BasicAlertDialog(onDismissRequest = { if (error != null) onDismiss() }) {
         Surface(shape = MaterialTheme.shapes.large) {
             Column(
@@ -269,11 +307,12 @@ private fun RootfsDownloadDialog(label: String, progress: Int, error: String?, o
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (error != null) {
-                    Text("$label download failed: $error", color = MaterialTheme.colorScheme.error)
+                    val action = if (verb == "Copying") "copy" else "download"
+                    Text("Failed to $action $label rootfs: $error", color = MaterialTheme.colorScheme.error)
                     Spacer(modifier = Modifier.height(12.dp))
                     TextButton(onClick = onDismiss) { Text("Close") }
                 } else {
-                    Text("Downloading $label rootfs\u2026")
+                    Text("$verb $label rootfs\u2026")
                     Spacer(modifier = Modifier.height(16.dp))
                     if (progress > 0) {
                         CircularProgressIndicator(progress = { progress / 100f })

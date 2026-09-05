@@ -1,27 +1,24 @@
 package io.boffin.proot.ui.screens.downloader
 
 import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import com.rk.libcommons.child
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
-/**
- * Shared "fetch a manifest.json, then download whatever URL it contains" flow.
- *
- * The manifest is a tiny JSON file kept in the repo (NOT bundled as an APK asset) so its
- * content — the actual rootfs download URL — can be updated at any time on GitHub without
- * rebuilding the app. Each installer object below fetches its own manifest first, then
- * downloads whatever URL it currently points to into context.filesDir/<outputFileName>.
- */
 class InstallException(message: String) : Exception(message)
 
-interface RootfsInstaller {
-    fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit)
-}
-
+/**
+ * Fetches a manifest.json, then downloads whatever URL it contains, into
+ * context.filesDir/<outputFileName>. The manifest is a tiny JSON file kept in the repo
+ * (NOT bundled as an APK asset) so its content — the actual rootfs download URL — can be
+ * updated at any time on GitHub without rebuilding the app.
+ */
 private fun downloadManifestRootfs(
     context: Context,
     manifestUrl: String,
@@ -82,15 +79,64 @@ private fun downloadManifestRootfs(
 }
 
 /**
+ * Copies a file the user picked via the system file/document picker (SAF) into
+ * context.filesDir/<outputFileName>. Used by the "Boffin" session, which is installed from a
+ * rootfs archive already sitting on the phone's storage rather than downloaded over the network.
+ */
+fun copyPickedRootfs(
+    context: Context,
+    uri: Uri,
+    outputFileName: String,
+    onProgress: (Int) -> Unit
+) {
+    val outputFile = context.filesDir.child(outputFileName)
+    if (outputFile.exists() && outputFile.length() > 0L) {
+        return
+    }
+
+    val resolver = context.contentResolver
+    var totalSize = -1L
+    resolver.query(uri, null, null, null, null)?.use { cursor ->
+        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+        if (sizeIndex >= 0 && cursor.moveToFirst()) {
+            totalSize = cursor.getLong(sizeIndex)
+        }
+    }
+
+    val tempFile = File(outputFile.path + ".part")
+    val input = resolver.openInputStream(uri)
+        ?: throw IOException("Failed to open the selected file")
+
+    input.use { stream ->
+        FileOutputStream(tempFile).use { output ->
+            val buffer = ByteArray(64 * 1024)
+            var bytesRead: Int
+            var totalRead = 0L
+            while (stream.read(buffer).also { bytesRead = it } != -1) {
+                output.write(buffer, 0, bytesRead)
+                totalRead += bytesRead
+                if (totalSize > 0) {
+                    onProgress(((totalRead * 100) / totalSize).toInt())
+                }
+            }
+        }
+    }
+
+    if (!tempFile.renameTo(outputFile)) {
+        throw IOException("Failed to finalize copied Boffin rootfs")
+    }
+}
+
+/**
  * "Custom" session (formerly labelled NetHunter in the UI). Manifest/output filenames are
  * unchanged from the original NetHunter feature so existing installs that already downloaded
  * this rootfs don't need to re-download it after the rename.
  */
-object CustomInstaller : RootfsInstaller {
+object CustomInstaller {
     private const val MANIFEST_URL =
         "https://raw.githubusercontent.com/dev-boffin-io/proot-forge/main/nethunter-manifest.json"
 
-    override fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit) {
+    fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit) {
         downloadManifestRootfs(
             context = context,
             manifestUrl = MANIFEST_URL,
@@ -98,33 +144,6 @@ object CustomInstaller : RootfsInstaller {
             connectTimeoutMs = 15_000,
             readTimeoutMs = 15_000,
             label = "Custom",
-            onProgress = onProgress
-        )
-    }
-}
-
-/**
- * "Boffin" session — a self-hosted Debian 12 XFCE4 desktop rootfs. Served from a Tailscale
- * Funnel endpoint (git.bowfin-pleco.ts.net), which can be slow/cold-start on the first
- * request, so this uses much longer timeouts than CustomInstaller.
- */
-object BoffinInstaller : RootfsInstaller {
-    private const val MANIFEST_URL =
-        "https://raw.githubusercontent.com/dev-boffin-io/proot-forge/main/boffin-manifest.json"
-
-    // Generous timeouts: the Tailscale Funnel endpoint can be slow to respond, especially
-    // on a cold start, and the download itself is a large desktop rootfs over a slow link.
-    private const val CONNECT_TIMEOUT_MS = 120_000
-    private const val READ_TIMEOUT_MS = 120_000
-
-    override fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit) {
-        downloadManifestRootfs(
-            context = context,
-            manifestUrl = MANIFEST_URL,
-            outputFileName = "boffin.tar.gz",
-            connectTimeoutMs = CONNECT_TIMEOUT_MS,
-            readTimeoutMs = READ_TIMEOUT_MS,
-            label = "Boffin",
             onProgress = onProgress
         )
     }
