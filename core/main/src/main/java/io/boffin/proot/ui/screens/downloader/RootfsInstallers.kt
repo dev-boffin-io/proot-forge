@@ -18,6 +18,10 @@ import java.net.URL
  */
 class InstallException(message: String) : Exception(message)
 
+interface RootfsInstaller {
+    fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit)
+}
+
 private fun downloadManifestRootfs(
     context: Context,
     manifestUrl: String,
@@ -82,11 +86,11 @@ private fun downloadManifestRootfs(
  * unchanged from the original NetHunter feature so existing installs that already downloaded
  * this rootfs don't need to re-download it after the rename.
  */
-object CustomInstaller {
+object CustomInstaller : RootfsInstaller {
     private const val MANIFEST_URL =
         "https://raw.githubusercontent.com/dev-boffin-io/proot-forge/main/nethunter-manifest.json"
 
-    fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit) {
+    override fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit) {
         downloadManifestRootfs(
             context = context,
             manifestUrl = MANIFEST_URL,
@@ -104,7 +108,7 @@ object CustomInstaller {
  * Funnel endpoint (git.bowfin-pleco.ts.net), which can be slow/cold-start on the first
  * request, so this uses much longer timeouts than CustomInstaller.
  */
-object BoffinInstaller {
+object BoffinInstaller : RootfsInstaller {
     private const val MANIFEST_URL =
         "https://raw.githubusercontent.com/dev-boffin-io/proot-forge/main/boffin-manifest.json"
 
@@ -113,7 +117,7 @@ object BoffinInstaller {
     private const val CONNECT_TIMEOUT_MS = 120_000
     private const val READ_TIMEOUT_MS = 120_000
 
-    fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit) {
+    override fun downloadIfNeeded(context: Context, onProgress: (Int) -> Unit) {
         downloadManifestRootfs(
             context = context,
             manifestUrl = MANIFEST_URL,

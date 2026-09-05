@@ -38,6 +38,7 @@ import io.boffin.proot.ui.activities.terminal.MainViewModel
 import io.boffin.proot.ui.components.SetStatusBarTextColor
 import io.boffin.proot.ui.screens.downloader.BoffinInstaller
 import io.boffin.proot.ui.screens.downloader.CustomInstaller
+import io.boffin.proot.ui.screens.downloader.RootfsInstaller
 import io.boffin.proot.ui.screens.settings.SettingsCard
 import io.boffin.proot.ui.screens.settings.WorkingMode
 import io.boffin.proot.ui.screens.terminal.virtualkeys.VirtualKeysListener
@@ -118,7 +119,7 @@ fun TerminalScreen(
                     scope.launch {
                         withContext(Dispatchers.IO) {
                             try {
-                                val installer = if (mode == WorkingMode.CUSTOM) CustomInstaller else BoffinInstaller
+                                val installer: RootfsInstaller = if (mode == WorkingMode.CUSTOM) CustomInstaller else BoffinInstaller
                                 installer.downloadIfNeeded(context) { pct ->
                                     downloadProgress = pct
                                 }
