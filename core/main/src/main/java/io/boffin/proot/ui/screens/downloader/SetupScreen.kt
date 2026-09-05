@@ -26,7 +26,7 @@ import java.net.URL
 // Base URL where the kali-<arch>.tar.gz.rootfs assets are published as GitHub Release
 // files. Update the tag if you publish the rootfs files under a different release.
 private const val ROOTFS_RELEASE_BASE_URL =
-    "https://github.com/dev-boffin-io/ReTerminal/releases/download/rootfs-v1"
+    "https://github.com/dev-boffin-io/proot-forge/releases/download/rootfs-v1"
 
 @Composable
 fun SetupScreen(

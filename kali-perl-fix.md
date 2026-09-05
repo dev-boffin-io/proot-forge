@@ -1,6 +1,6 @@
 # Kali Linux (ARM64) — Perl Symlink Fix Note
 
-**Repo:** [dev-boffin-io/ReTerminal](https://github.com/dev-boffin-io/ReTerminal)
+**Repo:** [dev-boffin-io/proot-forge](https://github.com/dev-boffin-io/proot-forge)
 **Target hardware:** ReTerminal (or similar ARM64/aarch64 device)
 **Filesystem:** F2FS root
 **OS:** Minimal Kali Linux

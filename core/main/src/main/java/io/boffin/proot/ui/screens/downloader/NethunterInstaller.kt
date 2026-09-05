@@ -17,7 +17,7 @@ import java.net.URL
  * Update the branch/path below if the manifest is ever moved.
  */
 private const val NETHUNTER_MANIFEST_URL =
-    "https://raw.githubusercontent.com/dev-boffin-io/ReTerminal/kali/nethunter-manifest.json"
+    "https://raw.githubusercontent.com/dev-boffin-io/proot-forge/main/nethunter-manifest.json"
 
 object NethunterInstaller {
 
