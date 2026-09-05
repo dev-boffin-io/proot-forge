@@ -104,8 +104,8 @@ fun TerminalScreen(
         }
     }
 
-    // The launcher itself lives on MainActivity (registered in its field initializers) so it
-    // survives the app process being killed while the picker is in the foreground; only the
+    // The picker itself is launched/received on MainActivity via the classic
+    // startActivityForResult/onActivityResult path (see MainActivity.kt for why); only the
     // callback that actually handles the result is wired up/torn down here.
     DisposableEffect(Unit) {
         mainActivity.boffinPickCallback = boffinPickHandler
@@ -147,7 +147,7 @@ fun TerminalScreen(
                             proceedToCreateSession(mode)
                         } else {
                             showAddDialog = false
-                            mainActivity.boffinFilePicker.launch(arrayOf("*/*"))
+                            mainActivity.launchBoffinFilePicker()
                         }
                     }
                     WorkingMode.CUSTOM -> {
